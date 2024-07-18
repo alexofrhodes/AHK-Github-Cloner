@@ -1,35 +1,58 @@
-;TODO - add a control to type or pick a folder to clone into (before proceeding)
-;TODO - create command to clone
-;TODO - create a column to check if the selected repo is already cloned
-;TODO - 
+
 
 #Include, json.ahk
 
-header := "owner,repo,description,language,created,updated"
+header := "owner,repo,cloned,description,language,created,updated"
 csvData := header "`n"
+IniFile := "settings.ini"
 
-gui, add, text, , usernames (separate by line feed)
-Gui, Add, Edit, section vUserInput w200 h50
-Gui, Add, Button, ys gPullData, Pull Data
-Gui, Add, Button, gClone, Clone
+; Load the last selected Clone Folder from the ini file
+IniRead, CloneFolder, %IniFile%, Settings, CloneFolder, 
+if (CloneFolder = "ERROR") ; if not found, set to empty
+    CloneFolder := ""
 
-; Add a single filtering control
+gui, font, s11, verdana
+
+
+Gui, Add, Text, , Base Clone Folder (will render CloneFolder "\" owner "\" repo "\")
+Gui, Add, Edit, section vCloneFolder w600, %CloneFolder%
+Gui, Add, Button, ys gBrowseFolder, Browse
+
+
+gui, add, text,xs , usernames (separate by line feed)
+Gui, Add, Edit, section vUserInput w200 h100
+Gui, Add, Button, ys w100 gPullData, Pull Data
+
+
+; filtering control for all row
 Gui, Add, Text, xs, Filter
 Gui, Add, Edit, section vFilter w200 gFilterData
 Gui, Add, Button, ys gSelectAll, Select All
 Gui, Add, Button, ys gDeselectAll, Deselect All
+Gui, Add, Button, ys  gClone, Clone Selected
 
+Gui, Show, Maximize
+Gui, +Resize
+
+WinGetPos,,, GuiWidth, GuiHeight, A
+GuiWidth -= 500 ; Adjust to fit within the GUI
 ListViewHeaders := StrReplace(header, ",", "|")
-Gui, Add, ListView, xs vlv w1000 r10, %ListViewHeaders%
-Gui, Show, AutoSize
+Gui, Add, ListView, xs vlv w%GuiWidth% r25, %ListViewHeaders%
 
 PullData(){
     global
     Gui, Submit, NoHide
+    
+    ; Check if Clone Folder is set
+    if (CloneFolder = "") {
+        MsgBox, Please select a clone folder before pulling data.
+        return
+    }
+
     userinput := StrReplace(UserInput, "`r`n", ",")
     userinput := StrReplace(userinput, " ", "")
     GuiControl, -Redraw, LV ; Prevents flickering during ListView update
-    LV_Delete() ; Clear ListView before adding new data
+    LV_Delete()             ; Clear ListView before adding new data
     Loop, Parse, userinput, `,
     {
         UserName := A_LoopField
@@ -47,15 +70,21 @@ PullData(){
             continue
         }
         for index, repo in JsonObject {
-            LV_Add("", repo.owner.login, repo.name, repo.description, repo.language, repo.created_at, repo.updated_at)
-            csvData := repo.owner.login "," repo.name "," """" repo.description """" "," repo.language "," repo.created_at "," repo.updated_at "`n"
+            repoPath := CloneFolder "\" repo.owner.login "\" repo.name
+            if (FileExist(repoPath)) {
+                cloned := "Yes"
+            } else {
+                cloned := "No"
+            }
+            LV_Add("", repo.owner.login, repo.name, cloned, repo.description, repo.language, repo.created_at, repo.updated_at)
+            csvData := repo.owner.login "," repo.name "," cloned "`n" "," """" repo.description """" "," repo.language "," repo.created_at "," repo.updated_at 
             FileAppend, % csvData, % aFile
         }
     }
     LV_ModifyCol()
     GuiControl, +Redraw, LV ; Re-enable redraw for ListView
-    gui, show, AutoSize
-    TrayTip, , Complete
+    gui, show, maximize
+
 }
 
 FilterData(){
@@ -96,6 +125,12 @@ FilterData(){
 
 Clone(){
     global
+    Gui, Submit, NoHide
+    if (CloneFolder = "") {
+        MsgBox, Please select a folder to clone into.
+        return
+    }
+
     RowNumber := 0
     selection := []
     Loop
@@ -105,11 +140,34 @@ Clone(){
             break
         LV_GetText(owner, RowNumber, GetColumnIndex("owner"))
         LV_GetText(repo, RowNumber, GetColumnIndex("repo"))
-        Text := "https://github.com/" owner "/" repo
-        selection.Push(Text)
+        LV_GetText(cloned, RowNumber, GetColumnIndex("cloned"))
+
+        CloneRepoPath := CloneFolder "\" owner "\" repo
+
+        if (cloned = "No") {
+            CloneUrl := "https://github.com/" owner "/" repo
+            CloneRepo(CloneUrl, CloneRepoPath, RowNumber)
+        }
     }
-    out := Join("`n", selection*)
-    MsgBox %out%
+    TrayTip, , Completed
+}
+
+CloneRepo(CloneUrl, CloneRepoPath, RowNumber) {
+    global
+    RunWait, %ComSpec% /C git clone %CloneUrl% %CloneRepoPath%, , Hide
+    if (FileExist(CloneRepoPath)) {
+        LV_Modify(RowNumber, "Col7", "Yes")
+    }
+}
+
+BrowseFolder(){
+    global
+    FileSelectFolder, CloneFolder
+    if (CloneFolder != "")
+    {
+        GuiControl,, CloneFolder, %CloneFolder%
+        IniWrite, %CloneFolder%, %IniFile%, Settings, CloneFolder
+    }
 }
 
 SelectAll(){
