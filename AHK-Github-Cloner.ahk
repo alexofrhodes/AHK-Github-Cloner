@@ -1,5 +1,5 @@
 #Include, json.ahk
-
+OnMessage(0x404, "TrayClick")
 ClonedYes := "--YES--"
 ClonedNo := "--no---"
 header := "owner,repo,cloned,description,language,created,updated"
@@ -226,3 +226,31 @@ OpenFolder()
     global
     run, %CloneFolder%
 }
+
+
+; NotifyTrayClick_201:   ; Left click (Button down)
+; NotifyTrayClick_202:   ; Left click (Button up)
+; NotifyTrayClick_203:   ; Left double click
+; NotifyTrayClick_204:   ; Right click (Button down)
+; NotifyTrayClick_205:   ; Right click (Button up)
+; NotifyTrayClick_206:   ; Right double click
+; NotifyTrayClick_207:   ; Middle click (Button down)
+; NotifyTrayClick_208:   ; Middle click (Button up)
+; NotifyTrayClick_209:   ; Middle double click
+
+NotifyTrayClick(P*) {              ;  v0.41 by SKAN on D39E/D39N @ tiny.cc/notifytrayclick
+    Static Msg, Fun:="NotifyTrayClick", NM:=OnMessage(0x404,Func(Fun),-1),  Chk,T:=-250,Clk:=1
+      If ( (NM := Format(Fun . "_{:03X}", Msg := P[2])) && P.Count()<4 )
+         Return ( T := Max(-5000, 0-(P[1] ? Abs(P[1]) : 250)) )
+      Critical
+      If ( ( Msg<0x201 || Msg>0x209 ) || ( IsFunc(NM) || Islabel(NM) )=0 )
+         Return
+      Chk := (Fun . "_" . (Msg<=0x203 ? "203" : Msg<=0x206 ? "206" : Msg<=0x209 ? "209" : ""))
+      SetTimer, %NM%,  %  (Msg==0x203        || Msg==0x206        || Msg==0x209)
+        ? (-1, Clk:=2) : ( Clk=2 ? ("Off", Clk:=1) : ( IsFunc(Chk) || IsLabel(Chk) ? T : -1) )
+    Return True
+    }
+
+NotifyTrayClick_202:   ; Left click (Button up)
+  Gui, Show
+Return
